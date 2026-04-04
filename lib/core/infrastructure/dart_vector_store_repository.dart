@@ -33,7 +33,7 @@ class DartVectorStoreRepository implements VectorStoreRepository {
   @override
   Future<void> initialize(String databasePath) async {
     try {
-      _db?.close();
+      _db?.dispose();
       _db = sqlite3.open(databasePath);
       _createTable();
       _isInitialized = true;
@@ -229,7 +229,7 @@ class DartVectorStoreRepository implements VectorStoreRepository {
   Future<void> close() async {
     if (!_isInitialized) return;
 
-    _db?.close();
+    _db?.dispose();
     _db = null;
     _hnswIndex.clear();
     _isInitialized = false;
