@@ -330,7 +330,7 @@ private class PlatformServiceImpl(
         launch {
           currentEngine.errors.collect { error ->
             withContext(Dispatchers.Main) {
-              events?.error("ERROR", error.message, null)
+              events?.error("ERROR", error.message ?: error.toString(), null)
             }
           }
         }
