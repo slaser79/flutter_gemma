@@ -31,6 +31,14 @@ abstract class FlutterGemmaPlugin extends PlatformInterface {
 
   InferenceModel? get initializedModel;
 
+  /// Register a handler for native tool execution callbacks.
+  /// When LiteRT-LM calls a tool natively, this handler is invoked with
+  /// the tool name and arguments JSON. Must return the result as a JSON string.
+  ///
+  /// Only functional on Android (LiteRT-LM). No-op on iOS/web/desktop.
+  set onToolCall(Future<String> Function(String name, String argumentsJson)? handler);
+  Future<String> Function(String name, String argumentsJson)? get onToolCall;
+
   EmbeddingModel? get initializedEmbeddingModel;
 
   /// Creates and returns a new [InferenceModel] instance.
@@ -206,7 +214,6 @@ abstract class InferenceModelSession {
   Future<void> stopGeneration();
 
   Future<void> close();
-
 }
 
 /// Task type for embedding generation, following Google RAG SDK convention.

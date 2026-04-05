@@ -88,6 +88,13 @@ class AudioPromptPart extends PromptPart {
 class FlutterGemmaWeb extends FlutterGemmaPlugin {
   FlutterGemmaWeb();
 
+  @override
+  Future<String> Function(String name, String argumentsJson)? get onToolCall => null;
+  @override
+  set onToolCall(Future<String> Function(String name, String argumentsJson)? handler) {
+    // No-op on web
+  }
+
   static void registerWith(Registrar registrar) {
     FlutterGemmaPlugin.instance = FlutterGemmaWeb();
   }

@@ -14,8 +14,27 @@ import com.google.ai.edge.litertlm.tool
 import dev.flutterberlin.flutter_gemma.engines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import org.json.JSONObject
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 
 private const val TAG = "LiteRtLmSession"
+
+/** Timeout for Dart-side tool execution (seconds). */
+private const val TOOL_EXECUTION_TIMEOUT_SECONDS = 60L
+
+/**
+ * Callback interface for executing tools in Dart.
+ * Called on the LiteRT-LM inference thread — implementation must be thread-safe.
+ */
+fun interface ToolExecutor {
+    /**
+     * Execute a tool and return the result as a JSON string.
+     * @param name Tool name
+     * @param paramsJson JSON string of tool arguments
+     * @return CompletableFuture that resolves with the tool result JSON
+     */
+    fun execute(name: String, paramsJson: String): CompletableFuture<String>
+}
 
 /**
  * LiteRT-LM Session implementation.
@@ -29,7 +48,8 @@ class LiteRtLmSession(
     engine: Engine,
     config: SessionConfig,
     private val resultFlow: MutableSharedFlow<Pair<String, Boolean>>,
-    private val errorFlow: MutableSharedFlow<Throwable>
+    private val errorFlow: MutableSharedFlow<Throwable>,
+    private val toolExecutor: ToolExecutor? = null
 ) : InferenceSession {
 
     private val conversation: Conversation
@@ -60,19 +80,30 @@ class LiteRtLmSession(
                 val parametersJson = json.optJSONObject("parameters")?.toString() ?: "{}"
                 object : OpenApiTool {
                     override fun getToolDescriptionJsonString(): String {
-                        // Flat format — name at root level (LiteRT-LM parses name from root)
                         val toolJson = JSONObject().apply {
                             put("name", name)
                             put("description", description)
                             put("parameters", JSONObject(parametersJson))
                         }
-                        val result = toolJson.toString()
-                        Log.d(TAG, "Tool description JSON for '$name': $result")
-                        return result
+                        return toolJson.toString()
                     }
                     override fun execute(paramsJsonString: String): String {
-                        Log.i(TAG, "TOOL_EXECUTE called: name=$name, params=$paramsJsonString")
-                        return """{"status":"executed_natively","tool":"$name"}"""
+                        Log.i(TAG, "TOOL_EXECUTE: name=$name, params=$paramsJsonString")
+                        if (toolExecutor != null) {
+                            return try {
+                                val future = toolExecutor.execute(name, paramsJsonString)
+                                val result = future.get(
+                                    TOOL_EXECUTION_TIMEOUT_SECONDS, TimeUnit.SECONDS
+                                )
+                                Log.i(TAG, "TOOL_RESULT: name=$name, result=${result.take(200)}")
+                                result
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Tool execution failed: $name", e)
+                                """{"error":"Tool execution failed: ${e.message}"}"""
+                            }
+                        }
+                        // No executor — return placeholder
+                        return """{"error":"no_executor","tool":"$name"}"""
                     }
                 }
             } catch (e: Exception) {
@@ -84,7 +115,6 @@ class LiteRtLmSession(
         hasNativeTools = toolProviders.isNotEmpty()
 
         // Build conversation config — pass tools if available
-        // Each OpenApiTool is wrapped via ToolKt.tool() to create a ToolProvider
         val nativeToolProviders = toolProviders.map { tool(it) }
 
         val conversationConfig = if (hasNativeTools) {
@@ -93,7 +123,7 @@ class LiteRtLmSession(
                 samplerConfig = samplerConfig,
                 systemInstruction = config.systemInstruction?.let { Contents.of(it) },
                 tools = nativeToolProviders,
-                automaticToolCalling = true, // Let LiteRT-LM handle the tool loop
+                automaticToolCalling = true,
             )
         } else {
             ConversationConfig(
@@ -103,11 +133,11 @@ class LiteRtLmSession(
         }
 
         conversation = engine.createConversation(conversationConfig)
-        Log.d(TAG, "Created LiteRT-LM conversation with topK=${config.topK}, temp=${config.temperature}, nativeTools=$hasNativeTools")
+        Log.d(TAG, "Created LiteRT-LM conversation with topK=${config.topK}, " +
+            "temp=${config.temperature}, nativeTools=$hasNativeTools")
     }
 
     override fun addQueryChunk(prompt: String) {
-        // Accumulate chunks (LiteRT-LM uses sendMessage, not addQueryChunk)
         synchronized(promptLock) {
             pendingPrompt.append(prompt)
             Log.v(TAG, "Accumulated chunk: ${prompt.length} chars, total: ${pendingPrompt.length}")
@@ -115,32 +145,20 @@ class LiteRtLmSession(
     }
 
     override fun addImage(imageBytes: ByteArray) {
-        // Store image for multimodal message (thread-safe)
-        synchronized(promptLock) {
-            pendingImage = imageBytes
-        }
+        synchronized(promptLock) { pendingImage = imageBytes }
         Log.d(TAG, "Added image: ${imageBytes.size} bytes")
     }
 
     override fun addAudio(audioBytes: ByteArray) {
-        // Store audio for multimodal message (thread-safe)
-        synchronized(promptLock) {
-            pendingAudio = audioBytes
-        }
+        synchronized(promptLock) { pendingAudio = audioBytes }
         Log.d(TAG, "Added audio: ${audioBytes.size} bytes")
     }
 
     override fun generateResponse(): String {
         val message = buildAndConsumeMessage()
         Log.d(TAG, "Generating sync response for message: ${message.toString().length} chars")
-
         return try {
             val response = conversation.sendMessage(message)
-            // Phase 0: Log sync response details for tool call investigation
-            if (hasNativeTools) {
-                Log.i(TAG, "SYNC_RESPONSE: toolCalls=${response.toolCalls}, " +
-                    "contents=${response.contents}, role=${response.role}")
-            }
             response.toString()
         } catch (e: Exception) {
             Log.e(TAG, "Error generating response", e)
@@ -154,34 +172,15 @@ class LiteRtLmSession(
         Log.d(TAG, "Generating async response for message: ${message.toString().length} chars")
 
         try {
-            // Use callback-based API
             conversation.sendMessageAsync(message, object : MessageCallback {
                 override fun onMessage(message: Message) {
-                    // Phase 0: Diagnostic logging for tool call investigation
                     if (hasNativeTools) {
-                        Log.i(TAG, "onMessage: toolCalls=${message.toolCalls}, " +
-                            "contents=${message.contents}, " +
-                            "role=${message.role}, " +
-                            "channels=${message.channels}")
+                        Log.d(TAG, "onMessage: role=${message.role}, " +
+                            "toolCalls=${message.toolCalls.size}, " +
+                            "content=${message.contents.toString().take(100)}")
                     }
-
-                    // Check for native tool calls in the message
-                    val toolCalls = message.toolCalls
-                    if (toolCalls.isNotEmpty()) {
-                        for (tc in toolCalls) {
-                            Log.i(TAG, "NATIVE_TOOL_CALL: name=${tc.name}, args=${tc.arguments}")
-                            // Emit as JSON-tagged event so Dart can distinguish
-                            val tcJson = JSONObject().apply {
-                                put("__tool_call__", true)
-                                put("name", tc.name)
-                                put("arguments", JSONObject(tc.arguments))
-                            }
-                            resultFlow.tryEmit(tcJson.toString() to false)
-                        }
-                    } else {
-                        val text = message.toString()
-                        resultFlow.tryEmit(text to false)
-                    }
+                    val text = message.toString()
+                    resultFlow.tryEmit(text to false)
                 }
 
                 override fun onDone() {
@@ -202,12 +201,9 @@ class LiteRtLmSession(
     }
 
     override fun sizeInTokens(prompt: String): Int {
-        // LiteRT-LM doesn't expose tokenizer API
-        // Estimate: ~4 characters per token (GPT-style average)
         val estimate = (prompt.length + 3) / 4
         Log.w(TAG, "sizeInTokens: LiteRT-LM does not support token counting. " +
-                "Using estimate (~4 chars/token): $estimate tokens for ${prompt.length} chars. " +
-                "This may be inaccurate for non-English text.")
+                "Using estimate (~4 chars/token): $estimate tokens for ${prompt.length} chars.")
         return estimate
     }
 
@@ -229,16 +225,6 @@ class LiteRtLmSession(
         }
     }
 
-    /**
-     * Build Message from accumulated chunks/images/audio and clear buffer.
-     * Thread-safe: uses synchronized access to pending data.
-     *
-     * Note: Use Contents.of() for multimodal messages (audio/image support).
-     * Message.of() only works for text-only messages.
-     *
-     * Content order: Image → Audio → Text (last)
-     * AI Edge Gallery: "add text after image and audio for accurate last token"
-     */
     private fun buildAndConsumeMessage(): Contents {
         val text: String
         val image: ByteArray?
@@ -252,23 +238,15 @@ class LiteRtLmSession(
             pendingAudio = null
         }
 
-        // Build content list based on available modalities
-        // Order: Image → Audio → Text (matching AI Edge Gallery pattern)
         val contents = mutableListOf<Content>()
-
         image?.let {
             contents.add(Content.ImageBytes(it))
             Log.d(TAG, "Added image: ${it.size} bytes")
         }
-
         audio?.let {
-            // LiteRT-LM expects WAV format (miniaudio decoder needs container format)
-            // Flutter sends WAV data, pass it through directly
             contents.add(Content.AudioBytes(it))
             Log.d(TAG, "Added audio: ${it.size} bytes (WAV format)")
         }
-
-        // Text should be last for multimodal messages
         if (text.isNotEmpty() || contents.isEmpty()) {
             contents.add(Content.Text(text))
             Log.d(TAG, "Added text: ${text.length} chars")

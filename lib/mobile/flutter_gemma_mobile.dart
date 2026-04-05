@@ -230,9 +230,46 @@ class MobileInferenceModelSession extends InferenceModelSession {
 @visibleForTesting
 const eventChannel = EventChannel('flutter_gemma_stream');
 
+/// MethodChannel for native tool execution callbacks (Kotlin→Dart).
+const _toolExecutorChannel = MethodChannel('flutter_gemma_tool_executor');
+
 final _platformService = PlatformService();
 
 class FlutterGemmaMobile extends FlutterGemmaPlugin {
+  /// Dart-side tool execution handler. Set via [onToolCall].
+  Future<String> Function(String name, String argumentsJson)? _toolCallHandler;
+
+  FlutterGemmaMobile() {
+    // Register the tool execution MethodChannel handler
+    _toolExecutorChannel.setMethodCallHandler((call) async {
+      if (call.method == 'executeToolCall') {
+        final name = call.arguments['name'] as String;
+        final arguments = call.arguments['arguments'] as String;
+        debugPrint('[FlutterGemmaMobile] Tool call from native: $name');
+
+        final handler = _toolCallHandler;
+        if (handler != null) {
+          try {
+            final result = await handler(name, arguments);
+            return result;
+          } catch (e) {
+            debugPrint('[FlutterGemmaMobile] Tool execution error: $e');
+            return '{"error":"${e.toString().replaceAll('"', '\\"')}"}';
+          }
+        }
+        return '{"error":"no_tool_handler_registered"}';
+      }
+      return null;
+    });
+  }
+
+  @override
+  set onToolCall(Future<String> Function(String name, String argumentsJson)? handler) {
+    _toolCallHandler = handler;
+  }
+
+  @override
+  Future<String> Function(String name, String argumentsJson)? get onToolCall => _toolCallHandler;
   Completer<InferenceModel>? _initCompleter;
   InferenceModel? _initializedModel;
   InferenceModelSpec?

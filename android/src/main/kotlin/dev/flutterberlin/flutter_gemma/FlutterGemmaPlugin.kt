@@ -11,6 +11,9 @@ import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.*
 
 import dev.flutterberlin.flutter_gemma.engines.*
+import dev.flutterberlin.flutter_gemma.engines.litertlm.LiteRtLmEngine
+import dev.flutterberlin.flutter_gemma.engines.litertlm.ToolExecutor
+import java.util.concurrent.CompletableFuture
 
 /** FlutterGemmaPlugin */
 class FlutterGemmaPlugin: FlutterPlugin {
@@ -20,6 +23,7 @@ class FlutterGemmaPlugin: FlutterPlugin {
   /// when the Flutter Engine is detached from the Activity
   private lateinit var eventChannel: EventChannel
   private lateinit var bundledChannel: MethodChannel
+  private lateinit var toolChannel: MethodChannel
   private lateinit var context: Context
   private var service: PlatformServiceImpl? = null
 
@@ -28,6 +32,10 @@ class FlutterGemmaPlugin: FlutterPlugin {
     service = PlatformServiceImpl(context)
     eventChannel = EventChannel(flutterPluginBinding.binaryMessenger, "flutter_gemma_stream")
     eventChannel.setStreamHandler(service!!)
+
+    // Tool execution channel: Kotlin calls Dart to execute tools
+    toolChannel = MethodChannel(flutterPluginBinding.binaryMessenger, "flutter_gemma_tool_executor")
+    service!!.toolChannel = toolChannel
     PlatformService.setUp(flutterPluginBinding.binaryMessenger, service!!)
 
     // Setup bundled assets channel
@@ -65,6 +73,7 @@ class FlutterGemmaPlugin: FlutterPlugin {
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
     eventChannel.setStreamHandler(null)
     bundledChannel.setMethodCallHandler(null)
+    toolChannel.setMethodCallHandler(null)
     service?.cleanup()
     service = null
   }
@@ -84,6 +93,47 @@ private class PlatformServiceImpl(
   // NEW: Use InferenceEngine abstraction instead of InferenceModel
   private var engine: InferenceEngine? = null
   private var session: InferenceSession? = null
+
+  /** MethodChannel for calling Dart to execute tools. Set by FlutterGemmaPlugin. */
+  var toolChannel: MethodChannel? = null
+
+  /**
+   * ToolExecutor that bridges Kotlin→Dart for tool execution.
+   * Called on the LiteRT-LM inference thread. Posts to main thread to invoke Dart,
+   * then blocks with CompletableFuture until Dart returns the result.
+   */
+  private val dartToolExecutor = ToolExecutor { name, paramsJson ->
+    val future = CompletableFuture<String>()
+    val channel = toolChannel
+    if (channel == null) {
+      future.complete("""{"error":"tool_channel_not_available"}""")
+      return@ToolExecutor future
+    }
+
+    // Post to main thread — MethodChannel.invokeMethod must run on UI thread
+    android.os.Handler(android.os.Looper.getMainLooper()).post {
+      channel.invokeMethod(
+        "executeToolCall",
+        mapOf("name" to name, "arguments" to paramsJson),
+        object : MethodChannel.Result {
+          override fun success(result: Any?) {
+            val resultStr = result as? String ?: """{"result": ${result ?: "null"}}"""
+            Log.i(TAG, "Dart tool result for '$name': ${resultStr.take(200)}")
+            future.complete(resultStr)
+          }
+          override fun error(code: String, message: String?, details: Any?) {
+            Log.e(TAG, "Dart tool error for '$name': $code $message")
+            future.complete("""{"error":"$code","message":"${message ?: ""}"}""")
+          }
+          override fun notImplemented() {
+            Log.w(TAG, "Dart tool not implemented: $name")
+            future.complete("""{"error":"not_implemented","tool":"$name"}""")
+          }
+        }
+      )
+    }
+    future
+  }
 
   // RAG components
   private var embeddingModel: EmbeddingModel? = null
@@ -198,6 +248,11 @@ private class PlatformServiceImpl(
             toolDefinitionsJson = toolDefinitionsJson,
             enableThinking = enableThinking,
           )
+
+          // Wire Dart tool executor for LiteRT-LM sessions with tools
+          if (toolDefinitionsJson != null && currentEngine is LiteRtLmEngine) {
+            currentEngine.toolExecutor = dartToolExecutor
+          }
 
           session?.close()
           session = currentEngine.createSession(config)

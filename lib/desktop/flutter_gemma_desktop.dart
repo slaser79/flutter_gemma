@@ -38,6 +38,13 @@ part 'desktop_embedding_model.dart';
 class FlutterGemmaDesktop extends FlutterGemmaPlugin {
   FlutterGemmaDesktop._();
 
+  @override
+  Future<String> Function(String name, String argumentsJson)? get onToolCall => null;
+  @override
+  set onToolCall(Future<String> Function(String name, String argumentsJson)? handler) {
+    // No-op on desktop
+  }
+
   static FlutterGemmaDesktop? _instance;
 
   /// Get the singleton instance

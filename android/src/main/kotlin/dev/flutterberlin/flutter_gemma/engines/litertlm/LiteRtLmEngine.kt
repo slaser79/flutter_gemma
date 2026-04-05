@@ -24,7 +24,8 @@ private const val TAG = "LiteRtLmEngine"
  * - Faster initialization (~1-2s with cache vs ~10s cold start)
  */
 class LiteRtLmEngine(
-    private val context: Context
+    private val context: Context,
+    var toolExecutor: ToolExecutor? = null
 ) : InferenceEngine {
 
     private var engine: Engine? = null
@@ -95,7 +96,7 @@ class LiteRtLmEngine(
     override fun createSession(config: SessionConfig): InferenceSession {
         val currentEngine = engine
             ?: throw IllegalStateException("Engine not initialized. Call initialize() first.")
-        return LiteRtLmSession(currentEngine, config, _partialResults, _errors)
+        return LiteRtLmSession(currentEngine, config, _partialResults, _errors, toolExecutor)
     }
 
     override fun close() {
