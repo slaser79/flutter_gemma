@@ -212,6 +212,38 @@ class InferenceChat {
     await for (final response in stopFilteredStream) {
       if (response is TextResponse) {
         final token = response.token;
+
+        // Intercept native tool events from LiteRT-LM bridge.
+        // These are JSON objects with __native_tool_event__ field emitted
+        // by execute() to notify the UI about tool call progress.
+        if (hasNativeTools && token.contains('"__native_tool_event__"')) {
+          try {
+            final event = jsonDecode(token) as Map<String, dynamic>;
+            final eventType = event['__native_tool_event__'] as String?;
+            final toolName = event['name'] as String? ?? '';
+            if (eventType == 'started') {
+              debugPrint('InferenceChat: Native tool call started: $toolName');
+              // Yield a FunctionCallResponse so the UI shows the tool pill
+              final argsStr = event['arguments'] as String? ?? '{}';
+              Map<String, dynamic> args;
+              try {
+                args = jsonDecode(argsStr) as Map<String, dynamic>;
+              } catch (_) {
+                args = {'raw': argsStr};
+              }
+              yield FunctionCallResponse(name: toolName, args: args);
+              emittedFunctionCall = true;
+              continue;
+            } else if (eventType == 'completed' || eventType == 'error') {
+              debugPrint('InferenceChat: Native tool call $eventType: $toolName');
+              // Tool completed — LiteRT-LM will continue generating text
+              continue;
+            }
+          } catch (_) {
+            // Not valid JSON — fall through to normal token handling
+          }
+        }
+
         debugPrint('InferenceChat: Received filtered token: "$token"');
 
         // Track if this token should be added to buffer (default true)

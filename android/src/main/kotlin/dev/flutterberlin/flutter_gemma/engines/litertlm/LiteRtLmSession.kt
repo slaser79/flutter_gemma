@@ -89,6 +89,15 @@ class LiteRtLmSession(
                     }
                     override fun execute(paramsJsonString: String): String {
                         Log.i(TAG, "TOOL_EXECUTE: name=$name, params=$paramsJsonString")
+
+                        // Emit tool-call-started event for UI progress indication
+                        val startEvent = JSONObject().apply {
+                            put("__native_tool_event__", "started")
+                            put("name", name)
+                            put("arguments", paramsJsonString)
+                        }
+                        resultFlow.tryEmit(startEvent.toString() to false)
+
                         if (toolExecutor != null) {
                             return try {
                                 val future = toolExecutor.execute(name, paramsJsonString)
@@ -96,13 +105,29 @@ class LiteRtLmSession(
                                     TOOL_EXECUTION_TIMEOUT_SECONDS, TimeUnit.SECONDS
                                 )
                                 Log.i(TAG, "TOOL_RESULT: name=$name, result=${result.take(200)}")
+
+                                // Emit tool-call-completed event
+                                val endEvent = JSONObject().apply {
+                                    put("__native_tool_event__", "completed")
+                                    put("name", name)
+                                }
+                                resultFlow.tryEmit(endEvent.toString() to false)
+
                                 result
                             } catch (e: Exception) {
                                 Log.e(TAG, "Tool execution failed: $name", e)
+
+                                // Emit tool-call-error event
+                                val errorEvent = JSONObject().apply {
+                                    put("__native_tool_event__", "error")
+                                    put("name", name)
+                                    put("error", e.message ?: e.toString())
+                                }
+                                resultFlow.tryEmit(errorEvent.toString() to false)
+
                                 """{"error":"Tool execution failed: ${e.message}"}"""
                             }
                         }
-                        // No executor — return placeholder
                         return """{"error":"no_executor","tool":"$name"}"""
                     }
                 }
