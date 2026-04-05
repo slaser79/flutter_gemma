@@ -26,6 +26,7 @@ class InferenceChat {
   final bool isThinking; // Add isThinking flag for thinking models
   final ModelFileType fileType; // Add fileType parameter
   final ToolChoice toolChoice; // Tool calling mode
+  final bool hasNativeTools; // True when tools passed natively to LiteRT-LM
   late InferenceModelSession session;
   final List<Tool> tools;
 
@@ -54,6 +55,8 @@ class InferenceChat {
         ModelFileType.task, // Default to task for backward compatibility
     this.toolChoice =
         ToolChoice.auto, // Default to auto for backward compatibility
+    this.hasNativeTools =
+        false, // True when tools are passed natively to LiteRT-LM
     String?
         systemInstruction, // kept for API compatibility, forwarded to session via sessionCreator
   });
@@ -72,12 +75,14 @@ class InferenceChat {
     var messageToSend = message;
 
     // Only add tools prompt for the first user text message (not a tool response)
-    // and only if the model supports function calls
+    // and only if the model supports function calls.
+    // Skip entirely when native tools are active — LiteRT-LM handles FC format.
     if (message.isUser &&
         message.type == MessageType.text &&
         !_toolsInstructionSent &&
         tools.isNotEmpty &&
         !noTool &&
+        !hasNativeTools &&
         supportsFunctionCalls &&
         toolChoice != ToolChoice.none) {
       _toolsInstructionSent = true;

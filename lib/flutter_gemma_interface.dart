@@ -179,6 +179,7 @@ abstract class InferenceModel {
       supportAudio: supportAudio ?? false,
       supportsFunctionCalls: supportsFunctionCalls ?? false,
       tools: tools,
+      hasNativeTools: nativeToolsJson != null, // Skip Dart-side tool prompt
       isThinking: isThinking, // Pass isThinking parameter
       modelType: modelType ?? ModelType.gemmaIt, // Use provided modelType or default
       fileType: fileType, // Pass fileType from model

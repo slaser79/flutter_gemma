@@ -56,6 +56,7 @@ class MobileInferenceModel extends InferenceModel {
       supportAudio: supportAudio ?? this.supportAudio,
       supportsFunctionCalls: supportsFunctionCalls ?? false,
       tools: tools,
+      hasNativeTools: nativeToolsJson != null,
       modelType: modelType ?? this.modelType,
       isThinking: isThinking,
       fileType: fileType,
