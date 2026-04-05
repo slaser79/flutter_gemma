@@ -51,6 +51,7 @@ class MobileInferenceModel extends InferenceModel {
         enableAudioModality: supportAudio ?? this.supportAudio,
         systemInstruction: systemInstruction,
         toolDefinitionsJson: nativeToolsJson,
+        enableThinking: isThinking,
       ),
       maxTokens: maxTokens,
       tokenBuffer: tokenBuffer,
@@ -96,6 +97,7 @@ class MobileInferenceModel extends InferenceModel {
     bool? enableAudioModality,
     String? systemInstruction,
     List<String>? toolDefinitionsJson,
+    bool enableThinking = false,
   }) async {
     if (_isClosed) {
       throw StateError('Model is closed. Create a new instance to use it again');
@@ -120,6 +122,7 @@ class MobileInferenceModel extends InferenceModel {
         enableAudioModality: enableAudioModality ?? supportAudio,
         systemInstruction: systemInstruction,
         toolDefinitionsJson: toolDefinitionsJson,
+        enableThinking: enableThinking,
       );
 
       final session = _session = MobileInferenceModelSession(

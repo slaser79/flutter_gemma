@@ -30,7 +30,7 @@ data class SessionConfig(
     val systemInstruction: String? = null,
     /** JSON tool definitions for native LiteRT-LM tool calling. */
     val toolDefinitionsJson: List<String>? = null,
-    val enableThinking: Boolean? = null,
+    val enableThinking: Boolean = false,
 )
 
 /**

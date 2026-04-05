@@ -91,8 +91,8 @@ private class PlatformServiceImpl(
   private val engineLock = Any()  // Lock for thread-safe engine access
 
   // NEW: Use InferenceEngine abstraction instead of InferenceModel
-  private var engine: InferenceEngine? = null
-  private var session: InferenceSession? = null
+  @Volatile private var engine: InferenceEngine? = null
+  @Volatile private var session: InferenceSession? = null
 
   /** MethodChannel for calling Dart to execute tools. Set by FlutterGemmaPlugin. */
   var toolChannel: MethodChannel? = null
@@ -180,6 +180,9 @@ private class PlatformServiceImpl(
 
         // Only now clear old state and swap in new engine (thread-safe)
         synchronized(engineLock) {
+          // Cancel stale stream collector before replacing engine
+          streamJob?.cancel()
+          streamJob = null
           session?.cancelGeneration()
           try {
             session?.close()
@@ -246,7 +249,7 @@ private class PlatformServiceImpl(
             enableAudioModality = enableAudioModality,
             systemInstruction = systemInstruction,
             toolDefinitionsJson = toolDefinitionsJson,
-            enableThinking = enableThinking,
+            enableThinking = enableThinking ?: false,
           )
 
           // Wire Dart tool executor for LiteRT-LM sessions with tools

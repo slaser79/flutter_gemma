@@ -146,6 +146,7 @@ abstract class InferenceModel {
     bool? enableAudioModality, // Add audio modality support (Gemma 3n E4B)
     String? systemInstruction,
     List<String>? toolDefinitionsJson, // Native LiteRT-LM tool defs (Android)
+    bool enableThinking = false, // Enable thinking mode (Gemma 4 via extraContext)
   });
 
   Future<InferenceChat> createChat({
@@ -185,6 +186,7 @@ abstract class InferenceModel {
         enableAudioModality: supportAudio ?? false,
         systemInstruction: systemInstruction,
         toolDefinitionsJson: nativeToolsJson,
+        enableThinking: isThinking,
       ),
       maxTokens: maxTokens,
       tokenBuffer: tokenBuffer,
@@ -193,10 +195,10 @@ abstract class InferenceModel {
       supportsFunctionCalls: supportsFunctionCalls ?? false,
       tools: tools,
       hasNativeTools: nativeToolsJson != null, // Skip Dart-side tool prompt
-      isThinking: isThinking, // Pass isThinking parameter
-      modelType: modelType ?? ModelType.gemmaIt, // Use provided modelType or default
-      fileType: fileType, // Pass fileType from model
-      toolChoice: toolChoice, // Pass tool calling mode
+      isThinking: isThinking,
+      modelType: modelType ?? ModelType.gemmaIt,
+      fileType: fileType,
+      toolChoice: toolChoice,
       systemInstruction: systemInstruction,
     );
     await chat!.initSession();

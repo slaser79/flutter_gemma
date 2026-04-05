@@ -56,6 +56,7 @@ abstract class PlatformService {
     // Native tool definitions (LiteRT-LM only, Android)
     // Each entry: JSON string with {name, description, parameters}
     List<String>? toolDefinitionsJson,
+    // Enable thinking mode (Gemma 4 via extraContext)
     bool? enableThinking,
   });
 

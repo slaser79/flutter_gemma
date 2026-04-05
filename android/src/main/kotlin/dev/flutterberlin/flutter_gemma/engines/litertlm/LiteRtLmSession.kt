@@ -9,6 +9,7 @@ import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.MessageCallback
 import com.google.ai.edge.litertlm.OpenApiTool
+import com.google.ai.edge.litertlm.ExperimentalFlags
 import com.google.ai.edge.litertlm.SamplerConfig
 import com.google.ai.edge.litertlm.tool
 import dev.flutterberlin.flutter_gemma.engines.*
@@ -53,6 +54,13 @@ class LiteRtLmSession(
 ) : InferenceSession {
 
     private val conversation: Conversation
+
+    // Extra context for thinking mode (Gemma 4 via Jinja template variable)
+    private val extraContext: Map<String, Any> = if (config.enableThinking) {
+        mapOf("enable_thinking" to true)
+    } else {
+        emptyMap()
+    }
 
     // Chunk buffering (MediaPipe compatibility) - thread-safe access
     private val pendingPrompt = StringBuilder()
@@ -157,9 +165,19 @@ class LiteRtLmSession(
             )
         }
 
+        // Enable constrained decoding when native tools are active.
+        // This forces the model to produce valid FC-format tool calls,
+        // preventing malformed output. Available in LiteRT-LM 0.10.0+.
+        if (hasNativeTools) {
+            ExperimentalFlags.enableConversationConstrainedDecoding = true
+        }
         conversation = engine.createConversation(conversationConfig)
+        // Reset flag after conversation creation (per Gallery pattern)
+        ExperimentalFlags.enableConversationConstrainedDecoding = false
+
         Log.d(TAG, "Created LiteRT-LM conversation with topK=${config.topK}, " +
-            "temp=${config.temperature}, nativeTools=$hasNativeTools")
+            "temp=${config.temperature}, nativeTools=$hasNativeTools, " +
+            "constrainedDecoding=${hasNativeTools}")
     }
 
     override fun addQueryChunk(prompt: String) {
@@ -183,11 +201,23 @@ class LiteRtLmSession(
         val message = buildAndConsumeMessage()
         Log.d(TAG, "Generating sync response for message: ${message.toString().length} chars")
         return try {
-            val response = conversation.sendMessage(message)
-            response.toString()
+            val response = if (extraContext.isNotEmpty()) {
+                conversation.sendMessage(message, extraContext)
+            } else {
+                conversation.sendMessage(message)
+            }
+            val thinking = response.channels["thought"]
+            val text = response.toString()
+            if (!thinking.isNullOrEmpty()) {
+                "<|channel>thought\n$thinking<channel|>$text"
+            } else {
+                text
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error generating response", e)
-            errorFlow.tryEmit(e)
+            if (!errorFlow.tryEmit(e)) {
+                Log.w(TAG, "Error emission dropped (buffer full): ${e.message}")
+            }
             throw e
         }
     }
@@ -197,15 +227,28 @@ class LiteRtLmSession(
         Log.d(TAG, "Generating async response for message: ${message.toString().length} chars")
 
         try {
-            conversation.sendMessageAsync(message, object : MessageCallback {
-                override fun onMessage(message: Message) {
+            // Create callback with native tool logging support
+            val wrappedCallback = object : MessageCallback {
+                override fun onMessage(msg: Message) {
                     if (hasNativeTools) {
-                        Log.d(TAG, "onMessage: role=${message.role}, " +
-                            "toolCalls=${message.toolCalls.size}, " +
-                            "content=${message.contents.toString().take(100)}")
+                        Log.d(TAG, "onMessage: role=${msg.role}, " +
+                            "toolCalls=${msg.toolCalls.size}, " +
+                            "content=${msg.contents.toString().take(100)}")
                     }
-                    val text = message.toString()
-                    resultFlow.tryEmit(text to false)
+                    // Combine thinking + text into single emission to prevent DROP_OLDEST loss
+                    val thinking = msg.channels["thought"]
+                    val text = msg.toString()
+                    val combined = buildString {
+                        if (!thinking.isNullOrEmpty()) {
+                            append("<|channel>thought\n$thinking<channel|>")
+                        }
+                        if (text.isNotEmpty()) {
+                            append(text)
+                        }
+                    }
+                    if (combined.isNotEmpty()) {
+                        resultFlow.tryEmit(combined to false)
+                    }
                 }
 
                 override fun onDone() {
@@ -214,13 +257,23 @@ class LiteRtLmSession(
 
                 override fun onError(throwable: Throwable) {
                     Log.e(TAG, "Async generation error", throwable)
-                    errorFlow.tryEmit(throwable)
+                    if (!errorFlow.tryEmit(throwable)) {
+                        Log.w(TAG, "Error emission dropped (buffer full): ${throwable.message}")
+                    }
                     resultFlow.tryEmit("" to true)
                 }
-            })
+            }
+
+            if (extraContext.isNotEmpty()) {
+                conversation.sendMessageAsync(message, wrappedCallback, extraContext)
+            } else {
+                conversation.sendMessageAsync(message, wrappedCallback)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start async generation", e)
-            errorFlow.tryEmit(e)
+            if (!errorFlow.tryEmit(e)) {
+                Log.w(TAG, "Error emission dropped (buffer full): ${e.message}")
+            }
             resultFlow.tryEmit("" to true)
         }
     }
