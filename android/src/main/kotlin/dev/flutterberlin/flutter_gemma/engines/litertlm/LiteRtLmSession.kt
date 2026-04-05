@@ -60,17 +60,13 @@ class LiteRtLmSession(
                 val parametersJson = json.optJSONObject("parameters")?.toString() ?: "{}"
                 object : OpenApiTool {
                     override fun getToolDescriptionJsonString(): String {
-                        // Build with JSONObject for proper escaping
-                        val funcObj = JSONObject().apply {
+                        // Flat format — name at root level (LiteRT-LM parses name from root)
+                        val toolJson = JSONObject().apply {
                             put("name", name)
                             put("description", description)
                             put("parameters", JSONObject(parametersJson))
                         }
-                        val wrapper = JSONObject().apply {
-                            put("type", "function")
-                            put("function", funcObj)
-                        }
-                        val result = wrapper.toString()
+                        val result = toolJson.toString()
                         Log.d(TAG, "Tool description JSON for '$name': $result")
                         return result
                     }
