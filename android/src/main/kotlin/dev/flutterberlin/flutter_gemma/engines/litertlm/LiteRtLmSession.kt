@@ -10,7 +10,7 @@ import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.MessageCallback
 import com.google.ai.edge.litertlm.OpenApiTool
 import com.google.ai.edge.litertlm.SamplerConfig
-import com.google.ai.edge.litertlm.ToolKt
+import com.google.ai.edge.litertlm.tool
 import dev.flutterberlin.flutter_gemma.engines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import org.json.JSONObject
@@ -79,7 +79,7 @@ class LiteRtLmSession(
 
         // Build conversation config — pass tools if available
         // Each OpenApiTool is wrapped via ToolKt.tool() to create a ToolProvider
-        val nativeToolProviders = toolProviders.map { ToolKt.tool(it) }
+        val nativeToolProviders = toolProviders.map { tool(it) }
 
         val conversationConfig = if (hasNativeTools) {
             Log.i(TAG, "Creating conversation with ${nativeToolProviders.size} native tools")
