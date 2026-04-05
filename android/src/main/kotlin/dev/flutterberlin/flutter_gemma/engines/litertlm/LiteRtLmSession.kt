@@ -60,11 +60,21 @@ class LiteRtLmSession(
                 val parametersJson = json.optJSONObject("parameters")?.toString() ?: "{}"
                 object : OpenApiTool {
                     override fun getToolDescriptionJsonString(): String {
-                        return """{"type":"function","function":{"name":"$name","description":"$description","parameters":$parametersJson}}"""
+                        // Build with JSONObject for proper escaping
+                        val funcObj = JSONObject().apply {
+                            put("name", name)
+                            put("description", description)
+                            put("parameters", JSONObject(parametersJson))
+                        }
+                        val wrapper = JSONObject().apply {
+                            put("type", "function")
+                            put("function", funcObj)
+                        }
+                        val result = wrapper.toString()
+                        Log.d(TAG, "Tool description JSON for '$name': $result")
+                        return result
                     }
                     override fun execute(paramsJsonString: String): String {
-                        // Phase 0: Log tool execution request — do NOT auto-execute.
-                        // Return a placeholder so we can observe the full flow.
                         Log.i(TAG, "TOOL_EXECUTE called: name=$name, params=$paramsJsonString")
                         return """{"status":"executed_natively","tool":"$name"}"""
                     }
