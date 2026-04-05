@@ -391,6 +391,7 @@ class WebInferenceModel extends InferenceModel {
     bool? enableVisionModality, // Enabling vision modality support
     bool? enableAudioModality, // Enabling audio modality support (Gemma 3n E4B)
     String? systemInstruction,
+    List<String>? toolDefinitionsJson, // Not supported on web
   }) async {
     // TODO: Implement vision modality for web
     if (enableVisionModality == true) {

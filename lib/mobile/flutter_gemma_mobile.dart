@@ -1,5 +1,6 @@
 import 'package:flutter_gemma/core/extensions.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';

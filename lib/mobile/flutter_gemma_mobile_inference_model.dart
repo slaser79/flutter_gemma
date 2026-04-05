@@ -33,6 +33,11 @@ class MobileInferenceModel extends InferenceModel {
     ToolChoice toolChoice = ToolChoice.auto,
     String? systemInstruction,
   }) async {
+    // Convert tools to JSON for native passthrough (Android LiteRT-LM)
+    final nativeToolsJson = tools.isNotEmpty
+        ? tools.map((t) => '{"name":"${t.name}","description":${jsonEncode(t.description)},"parameters":${jsonEncode(t.parameters)}}').toList()
+        : null;
+
     chat = InferenceChat(
       sessionCreator: () => createSession(
         temperature: temperature,
@@ -43,6 +48,7 @@ class MobileInferenceModel extends InferenceModel {
         enableVisionModality: supportImage ?? false,
         enableAudioModality: supportAudio ?? this.supportAudio,
         systemInstruction: systemInstruction,
+        toolDefinitionsJson: nativeToolsJson,
       ),
       maxTokens: maxTokens,
       tokenBuffer: tokenBuffer,
@@ -86,6 +92,7 @@ class MobileInferenceModel extends InferenceModel {
     bool? enableVisionModality,
     bool? enableAudioModality,
     String? systemInstruction,
+    List<String>? toolDefinitionsJson,
   }) async {
     if (_isClosed) {
       throw StateError('Model is closed. Create a new instance to use it again');
@@ -109,6 +116,7 @@ class MobileInferenceModel extends InferenceModel {
         // Enable audio modality if the model supports it (Gemma 3n E4B)
         enableAudioModality: enableAudioModality ?? supportAudio,
         systemInstruction: systemInstruction,
+        toolDefinitionsJson: toolDefinitionsJson,
       );
 
       final session = _session = MobileInferenceModelSession(

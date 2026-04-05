@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_gemma/core/tool.dart';
 import 'package:flutter_gemma/core/chat.dart';
@@ -136,6 +137,7 @@ abstract class InferenceModel {
     bool? enableVisionModality, // Add vision modality support
     bool? enableAudioModality, // Add audio modality support (Gemma 3n E4B)
     String? systemInstruction,
+    List<String>? toolDefinitionsJson, // Native LiteRT-LM tool defs (Android)
   });
 
   Future<InferenceChat> createChat({
@@ -154,6 +156,11 @@ abstract class InferenceModel {
     ToolChoice toolChoice = ToolChoice.auto, // Tool calling mode
     String? systemInstruction,
   }) async {
+    // Convert tools to JSON for native passthrough (Android LiteRT-LM)
+    final nativeToolsJson = tools.isNotEmpty
+        ? tools.map((t) => jsonEncode({'name': t.name, 'description': t.description, 'parameters': t.parameters})).toList()
+        : null;
+
     chat = InferenceChat(
       sessionCreator: () => createSession(
         temperature: temperature,
@@ -164,6 +171,7 @@ abstract class InferenceModel {
         enableVisionModality: supportImage ?? false,
         enableAudioModality: supportAudio ?? false,
         systemInstruction: systemInstruction,
+        toolDefinitionsJson: nativeToolsJson,
       ),
       maxTokens: maxTokens,
       tokenBuffer: tokenBuffer,
@@ -197,6 +205,7 @@ abstract class InferenceModelSession {
   Future<void> stopGeneration();
 
   Future<void> close();
+
 }
 
 /// Task type for embedding generation, following Google RAG SDK convention.

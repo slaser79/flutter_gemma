@@ -39,6 +39,7 @@ class DesktopInferenceModel extends InferenceModel {
     bool? enableVisionModality,
     bool? enableAudioModality,
     String? systemInstruction,
+    List<String>? toolDefinitionsJson, // Not supported on desktop yet
   }) async {
     if (_isClosed) {
       throw StateError('Model is closed. Create a new instance to use it again');

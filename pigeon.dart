@@ -53,6 +53,10 @@ abstract class PlatformService {
     bool? enableAudioModality,
     // System instruction for LiteRT-LM native support
     String? systemInstruction,
+    // Native tool definitions (LiteRT-LM only, Android)
+    // Each entry: JSON string with {name, description, parameters}
+    List<String>? toolDefinitionsJson,
+    bool? enableThinking,
   });
 
   @async

@@ -28,6 +28,9 @@ data class SessionConfig(
     val enableVisionModality: Boolean? = null,
     val enableAudioModality: Boolean? = null,
     val systemInstruction: String? = null,
+    /** JSON tool definitions for native LiteRT-LM tool calling. */
+    val toolDefinitionsJson: List<String>? = null,
+    val enableThinking: Boolean? = null,
 )
 
 /**

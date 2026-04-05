@@ -97,8 +97,11 @@ class PlatformServiceImpl : NSObject, PlatformService, FlutterStreamHandler {
         enableVisionModality: Bool?,
         enableAudioModality: Bool?,
         systemInstruction: String?,
+        toolDefinitionsJson: [String]?,
+        enableThinking: Bool?,
         completion: @escaping (Result<Void, any Error>) -> Void
     ) {
+        // toolDefinitionsJson ignored on iOS — MediaPipe has no native tool API
         guard let inference = model?.inference else {
             completion(.failure(PigeonError(code: "Inference model not created", message: nil, details: nil)))
             return

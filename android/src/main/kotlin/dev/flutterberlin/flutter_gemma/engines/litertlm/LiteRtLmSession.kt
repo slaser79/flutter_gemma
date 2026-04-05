@@ -8,9 +8,12 @@ import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.MessageCallback
+import com.google.ai.edge.litertlm.OpenApiTool
 import com.google.ai.edge.litertlm.SamplerConfig
+import com.google.ai.edge.litertlm.ToolManager
 import dev.flutterberlin.flutter_gemma.engines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
+import org.json.JSONObject
 
 private const val TAG = "LiteRtLmSession"
 
@@ -37,6 +40,9 @@ class LiteRtLmSession(
     @Volatile private var pendingImage: ByteArray? = null
     @Volatile private var pendingAudio: ByteArray? = null
 
+    /** Whether native tools were passed to this session. */
+    private val hasNativeTools: Boolean
+
     init {
         // Build sampler config
         val samplerConfig = SamplerConfig(
@@ -45,14 +51,50 @@ class LiteRtLmSession(
             temperature = config.temperature.toDouble(),
         )
 
-        // Build conversation config
-        val conversationConfig = ConversationConfig(
-            samplerConfig = samplerConfig,
-            systemInstruction = config.systemInstruction?.let { Contents.of(it) },
-        )
+        // Build native tool providers from JSON definitions
+        val toolProviders = config.toolDefinitionsJson?.mapNotNull { jsonStr ->
+            try {
+                val json = JSONObject(jsonStr)
+                val name = json.getString("name")
+                val description = json.optString("description", "")
+                val parametersJson = json.optJSONObject("parameters")?.toString() ?: "{}"
+                object : OpenApiTool {
+                    override fun getToolDescriptionJsonString(): String {
+                        return """{"type":"function","function":{"name":"$name","description":"$description","parameters":$parametersJson}}"""
+                    }
+                    override fun execute(paramsJsonString: String): String {
+                        // Phase 0: Log tool execution request — do NOT auto-execute.
+                        // Return a placeholder so we can observe the full flow.
+                        Log.i(TAG, "TOOL_EXECUTE called: name=$name, params=$paramsJsonString")
+                        return """{"status":"executed_natively","tool":"$name"}"""
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to parse tool definition: $jsonStr", e)
+                null
+            }
+        } ?: emptyList()
+
+        hasNativeTools = toolProviders.isNotEmpty()
+
+        // Build conversation config — pass tools if available
+        val conversationConfig = if (hasNativeTools) {
+            Log.i(TAG, "Creating conversation with ${toolProviders.size} native tools")
+            ConversationConfig(
+                samplerConfig = samplerConfig,
+                systemInstruction = config.systemInstruction?.let { Contents.of(it) },
+                tools = listOf(ToolManager(toolProviders)),
+                automaticToolCalling = true, // Let LiteRT-LM handle the tool loop
+            )
+        } else {
+            ConversationConfig(
+                samplerConfig = samplerConfig,
+                systemInstruction = config.systemInstruction?.let { Contents.of(it) },
+            )
+        }
 
         conversation = engine.createConversation(conversationConfig)
-        Log.d(TAG, "Created LiteRT-LM conversation with topK=${config.topK}, temp=${config.temperature}")
+        Log.d(TAG, "Created LiteRT-LM conversation with topK=${config.topK}, temp=${config.temperature}, nativeTools=$hasNativeTools")
     }
 
     override fun addQueryChunk(prompt: String) {
@@ -85,6 +127,11 @@ class LiteRtLmSession(
 
         return try {
             val response = conversation.sendMessage(message)
+            // Phase 0: Log sync response details for tool call investigation
+            if (hasNativeTools) {
+                Log.i(TAG, "SYNC_RESPONSE: toolCalls=${response.toolCalls}, " +
+                    "contents=${response.contents}, role=${response.role}")
+            }
             response.toString()
         } catch (e: Exception) {
             Log.e(TAG, "Error generating response", e)
@@ -101,8 +148,31 @@ class LiteRtLmSession(
             // Use callback-based API
             conversation.sendMessageAsync(message, object : MessageCallback {
                 override fun onMessage(message: Message) {
-                    val text = message.toString()
-                    resultFlow.tryEmit(text to false)
+                    // Phase 0: Diagnostic logging for tool call investigation
+                    if (hasNativeTools) {
+                        Log.i(TAG, "onMessage: toolCalls=${message.toolCalls}, " +
+                            "contents=${message.contents}, " +
+                            "role=${message.role}, " +
+                            "channels=${message.channels}")
+                    }
+
+                    // Check for native tool calls in the message
+                    val toolCalls = message.toolCalls
+                    if (toolCalls.isNotEmpty()) {
+                        for (tc in toolCalls) {
+                            Log.i(TAG, "NATIVE_TOOL_CALL: name=${tc.name}, args=${tc.arguments}")
+                            // Emit as JSON-tagged event so Dart can distinguish
+                            val tcJson = JSONObject().apply {
+                                put("__tool_call__", true)
+                                put("name", tc.name)
+                                put("arguments", JSONObject(tc.arguments))
+                            }
+                            resultFlow.tryEmit(tcJson.toString() to false)
+                        }
+                    } else {
+                        val text = message.toString()
+                        resultFlow.tryEmit(text to false)
+                    }
                 }
 
                 override fun onDone() {
