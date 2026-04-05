@@ -232,7 +232,8 @@ class InferenceChat {
                 args = {'raw': argsStr};
               }
               yield FunctionCallResponse(name: toolName, args: args);
-              emittedFunctionCall = true;
+              // Do NOT set emittedFunctionCall — the text after the tool
+              // execution is the real response and must be recorded as text.
               continue;
             } else if (eventType == 'completed' || eventType == 'error') {
               debugPrint('InferenceChat: Native tool call $eventType: $toolName');
