@@ -168,12 +168,9 @@ class LiteRtLmSession(
         // Enable constrained decoding when native tools are active.
         // This forces the model to produce valid FC-format tool calls,
         // preventing malformed output. Available in LiteRT-LM 0.10.0+.
-        if (hasNativeTools) {
-            ExperimentalFlags.enableConversationConstrainedDecoding = true
-        }
+        setConstrainedDecoding(hasNativeTools)
         conversation = engine.createConversation(conversationConfig)
-        // Reset flag after conversation creation (per Gallery pattern)
-        ExperimentalFlags.enableConversationConstrainedDecoding = false
+        setConstrainedDecoding(false)
 
         Log.d(TAG, "Created LiteRT-LM conversation with topK=${config.topK}, " +
             "temp=${config.temperature}, nativeTools=$hasNativeTools, " +
@@ -332,5 +329,20 @@ class LiteRtLmSession(
 
         Log.d(TAG, "Building message with ${contents.size} content items")
         return Contents.of(contents)
+    }
+
+    companion object {
+        /**
+         * Set constrained decoding flag. Uses LiteRT-LM 0.10.0 experimental API.
+         * Must be called before/after createConversation.
+         */
+        @Suppress("all")
+        private fun setConstrainedDecoding(enabled: Boolean) {
+            try {
+                ExperimentalFlags.enableConversationConstrainedDecoding = enabled
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to set constrained decoding: ${e.message}")
+            }
+        }
     }
 }
