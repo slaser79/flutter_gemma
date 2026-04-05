@@ -159,15 +159,20 @@ abstract class InferenceModel {
     bool? supportAudio,
     List<Tool> tools = const [],
     bool? supportsFunctionCalls,
-    bool isThinking = false, // Add isThinking parameter
-    ModelType? modelType, // Add modelType parameter
-    ToolChoice toolChoice = ToolChoice.auto, // Tool calling mode
+    bool isThinking = false,
+    ModelType? modelType,
+    ToolChoice toolChoice = ToolChoice.auto,
     String? systemInstruction,
+    /// Override for native tool definitions JSON.
+    /// When provided, these raw JSON defs are passed to LiteRT-LM instead of
+    /// auto-converting from [tools]. Use to bypass schema degradation.
+    List<String>? nativeToolDefinitionsJsonOverride,
   }) async {
-    // Convert tools to JSON for native passthrough (Android LiteRT-LM)
-    final nativeToolsJson = tools.isNotEmpty
-        ? tools.map((t) => jsonEncode({'name': t.name, 'description': t.description, 'parameters': t.parameters})).toList()
-        : null;
+    // Use override if provided, otherwise auto-convert from Tool objects
+    final nativeToolsJson = nativeToolDefinitionsJsonOverride ??
+        (tools.isNotEmpty
+            ? tools.map((t) => jsonEncode({'name': t.name, 'description': t.description, 'parameters': t.parameters})).toList()
+            : null);
 
     chat = InferenceChat(
       sessionCreator: () => createSession(

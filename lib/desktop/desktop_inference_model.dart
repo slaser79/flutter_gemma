@@ -97,6 +97,7 @@ class DesktopInferenceModel extends InferenceModel {
     ModelType? modelType,
     ToolChoice toolChoice = ToolChoice.auto,
     String? systemInstruction,
+    List<String>? nativeToolDefinitionsJsonOverride,
   }) async {
     chat = InferenceChat(
       sessionCreator: () => createSession(

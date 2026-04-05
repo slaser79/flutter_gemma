@@ -32,11 +32,13 @@ class MobileInferenceModel extends InferenceModel {
     ModelType? modelType,
     ToolChoice toolChoice = ToolChoice.auto,
     String? systemInstruction,
+    List<String>? nativeToolDefinitionsJsonOverride,
   }) async {
-    // Convert tools to JSON for native passthrough (Android LiteRT-LM)
-    final nativeToolsJson = tools.isNotEmpty
-        ? tools.map((t) => '{"name":"${t.name}","description":${jsonEncode(t.description)},"parameters":${jsonEncode(t.parameters)}}').toList()
-        : null;
+    // Use override if provided, otherwise auto-convert from Tool objects
+    final nativeToolsJson = nativeToolDefinitionsJsonOverride ??
+        (tools.isNotEmpty
+            ? tools.map((t) => '{"name":"${t.name}","description":${jsonEncode(t.description)},"parameters":${jsonEncode(t.parameters)}}').toList()
+            : null);
 
     chat = InferenceChat(
       sessionCreator: () => createSession(
