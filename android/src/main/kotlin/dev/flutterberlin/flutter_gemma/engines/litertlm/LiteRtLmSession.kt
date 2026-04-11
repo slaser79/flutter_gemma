@@ -65,7 +65,13 @@ class LiteRtLmSession(
     // Chunk buffering (MediaPipe compatibility) - thread-safe access
     private val pendingPrompt = StringBuilder()
     private val promptLock = Any()
-    @Volatile private var pendingImage: ByteArray? = null
+    // Multi-image support: Gemma 4 vision accepts multiple images per
+    // turn (up to ~32 per Google's spec). The previous single-slot
+    // pendingImage silently overwrote earlier images when addImage was
+    // called more than once between generateResponse calls, so callers
+    // could only ever send one image per turn. Use a list and drain it
+    // in buildAndConsumeMessage.
+    private val pendingImages = mutableListOf<ByteArray>()
     @Volatile private var pendingAudio: ByteArray? = null
 
     /** Whether native tools were passed to this session. */
@@ -185,8 +191,8 @@ class LiteRtLmSession(
     }
 
     override fun addImage(imageBytes: ByteArray) {
-        synchronized(promptLock) { pendingImage = imageBytes }
-        Log.d(TAG, "Added image: ${imageBytes.size} bytes")
+        synchronized(promptLock) { pendingImages.add(imageBytes) }
+        Log.d(TAG, "Added image: ${imageBytes.size} bytes (queue=${pendingImages.size})")
     }
 
     override fun addAudio(audioBytes: ByteArray) {
@@ -302,21 +308,24 @@ class LiteRtLmSession(
 
     private fun buildAndConsumeMessage(): Contents {
         val text: String
-        val image: ByteArray?
+        val images: List<ByteArray>
         val audio: ByteArray?
         synchronized(promptLock) {
             text = pendingPrompt.toString()
             pendingPrompt.clear()
-            image = pendingImage
-            pendingImage = null
+            images = pendingImages.toList()
+            pendingImages.clear()
             audio = pendingAudio
             pendingAudio = null
         }
 
         val contents = mutableListOf<Content>()
-        image?.let {
-            contents.add(Content.ImageBytes(it))
-            Log.d(TAG, "Added image: ${it.size} bytes")
+        // Add ALL pending images, not just one. Gemma 4 vision accepts
+        // multiple images per turn — see the field declaration above
+        // for the rationale on why this is a list now.
+        for (img in images) {
+            contents.add(Content.ImageBytes(img))
+            Log.d(TAG, "Added image: ${img.size} bytes")
         }
         audio?.let {
             contents.add(Content.AudioBytes(it))
