@@ -45,13 +45,13 @@ class InferenceModel(
     val llmInference: LlmInference
 
     private val _partialResults = MutableSharedFlow<Pair<String, Boolean>>(
-        extraBufferCapacity = 1,
+        extraBufferCapacity = 256,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val partialResults: SharedFlow<Pair<String, Boolean>> = _partialResults.asSharedFlow()
 
     private val _errors = MutableSharedFlow<Throwable>(
-        extraBufferCapacity = 1,
+        extraBufferCapacity = 256,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val errors: SharedFlow<Throwable> = _errors.asSharedFlow()
