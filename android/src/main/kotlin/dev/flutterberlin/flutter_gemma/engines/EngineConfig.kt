@@ -38,7 +38,7 @@ data class SessionConfig(
  */
 object FlowFactory {
     fun <T> createSharedFlow(): MutableSharedFlow<T> = MutableSharedFlow(
-        extraBufferCapacity = 1,
+        extraBufferCapacity = 256,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
 }
