@@ -147,6 +147,7 @@ abstract class InferenceModel {
     String? systemInstruction,
     List<String>? toolDefinitionsJson, // Native LiteRT-LM tool defs (Android)
     bool enableThinking = false, // Enable thinking mode (Gemma 4 via extraContext)
+    int? thinkingTokenBudget, // LiteRT-LM ThinkingConfig budget (Android); null = engine default
   });
 
   Future<InferenceChat> createChat({
@@ -161,6 +162,7 @@ abstract class InferenceModel {
     List<Tool> tools = const [],
     bool? supportsFunctionCalls,
     bool isThinking = false,
+    int? thinkingTokenBudget,
     ModelType? modelType,
     ToolChoice toolChoice = ToolChoice.auto,
     String? systemInstruction,
@@ -187,6 +189,7 @@ abstract class InferenceModel {
         systemInstruction: systemInstruction,
         toolDefinitionsJson: nativeToolsJson,
         enableThinking: isThinking,
+        thinkingTokenBudget: thinkingTokenBudget,
       ),
       maxTokens: maxTokens,
       tokenBuffer: tokenBuffer,

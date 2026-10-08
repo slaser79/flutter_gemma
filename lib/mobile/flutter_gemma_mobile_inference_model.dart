@@ -29,6 +29,7 @@ class MobileInferenceModel extends InferenceModel {
     List<Tool> tools = const [],
     bool? supportsFunctionCalls,
     bool isThinking = false,
+    int? thinkingTokenBudget,
     ModelType? modelType,
     ToolChoice toolChoice = ToolChoice.auto,
     String? systemInstruction,
@@ -52,6 +53,7 @@ class MobileInferenceModel extends InferenceModel {
         systemInstruction: systemInstruction,
         toolDefinitionsJson: nativeToolsJson,
         enableThinking: isThinking,
+        thinkingTokenBudget: thinkingTokenBudget,
       ),
       maxTokens: maxTokens,
       tokenBuffer: tokenBuffer,
@@ -98,6 +100,7 @@ class MobileInferenceModel extends InferenceModel {
     String? systemInstruction,
     List<String>? toolDefinitionsJson,
     bool enableThinking = false,
+    int? thinkingTokenBudget,
   }) async {
     if (_isClosed) {
       throw StateError('Model is closed. Create a new instance to use it again');
@@ -123,6 +126,7 @@ class MobileInferenceModel extends InferenceModel {
         systemInstruction: systemInstruction,
         toolDefinitionsJson: toolDefinitionsJson,
         enableThinking: enableThinking,
+        thinkingTokenBudget: thinkingTokenBudget,
       );
 
       final session = _session = MobileInferenceModelSession(

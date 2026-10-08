@@ -31,6 +31,8 @@ data class SessionConfig(
     /** JSON tool definitions for native LiteRT-LM tool calling. */
     val toolDefinitionsJson: List<String>? = null,
     val enableThinking: Boolean = false,
+    /** LiteRT-LM ThinkingConfig.thinkingTokenBudget; null = engine default (-1). */
+    val thinkingTokenBudget: Int? = null,
 )
 
 /**

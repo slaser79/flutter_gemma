@@ -11,6 +11,7 @@ import com.google.ai.edge.litertlm.MessageCallback
 import com.google.ai.edge.litertlm.OpenApiTool
 import com.google.ai.edge.litertlm.ExperimentalFlags
 import com.google.ai.edge.litertlm.SamplerConfig
+import com.google.ai.edge.litertlm.ThinkingConfig
 import com.google.ai.edge.litertlm.tool
 import dev.flutterberlin.flutter_gemma.engines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -61,6 +62,19 @@ class LiteRtLmSession(
     } else {
         emptyMap()
     }
+
+    // Native thinking config (litertlm 0.18.0 ThinkingConfig(enableThinking,
+    // thinkingTokenBudget)). Only set when thinking is on AND a budget was
+    // requested; null keeps the engine/template default.
+    private val thinkingConfig: ThinkingConfig? =
+        if (config.enableThinking && config.thinkingTokenBudget != null) {
+            ThinkingConfig(
+                enableThinking = true,
+                thinkingTokenBudget = config.thinkingTokenBudget,
+            )
+        } else {
+            null
+        }
 
     // Chunk buffering (MediaPipe compatibility) - thread-safe access
     private val pendingPrompt = StringBuilder()
@@ -163,11 +177,13 @@ class LiteRtLmSession(
                 systemInstruction = config.systemInstruction?.let { Contents.of(it) },
                 tools = nativeToolProviders,
                 automaticToolCalling = true,
+                thinkingConfig = thinkingConfig,
             )
         } else {
             ConversationConfig(
                 samplerConfig = samplerConfig,
                 systemInstruction = config.systemInstruction?.let { Contents.of(it) },
+                thinkingConfig = thinkingConfig,
             )
         }
 

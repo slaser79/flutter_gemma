@@ -400,6 +400,7 @@ class WebInferenceModel extends InferenceModel {
     String? systemInstruction,
     List<String>? toolDefinitionsJson, // Not supported on web
     bool enableThinking = false, // Not supported on Web (MediaPipe)
+    int? thinkingTokenBudget, // Not supported on Web
   }) async {
     // Thinking mode not supported on Web (MediaPipe has no extraContext/channels API)
     if (enableThinking) {

@@ -41,6 +41,7 @@ class DesktopInferenceModel extends InferenceModel {
     String? systemInstruction,
     List<String>? toolDefinitionsJson, // Not supported on desktop yet
     bool enableThinking = false,
+    int? thinkingTokenBudget, // Not supported on desktop
   }) async {
     if (_isClosed) {
       throw StateError('Model is closed. Create a new instance to use it again');
@@ -96,6 +97,7 @@ class DesktopInferenceModel extends InferenceModel {
     List<Tool> tools = const [],
     bool? supportsFunctionCalls,
     bool isThinking = false,
+    int? thinkingTokenBudget,
     ModelType? modelType,
     ToolChoice toolChoice = ToolChoice.auto,
     String? systemInstruction,

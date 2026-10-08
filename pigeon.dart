@@ -58,6 +58,8 @@ abstract class PlatformService {
     List<String>? toolDefinitionsJson,
     // Enable thinking mode (Gemma 4 via extraContext)
     bool? enableThinking,
+    // LiteRT-LM ThinkingConfig.thinkingTokenBudget (Android); null = engine default
+    int? thinkingTokenBudget,
   });
 
   @async

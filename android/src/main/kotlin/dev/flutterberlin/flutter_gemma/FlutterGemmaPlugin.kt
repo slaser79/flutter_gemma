@@ -231,6 +231,7 @@ private class PlatformServiceImpl(
     systemInstruction: String?,
     toolDefinitionsJson: List<String>?,
     enableThinking: Boolean?,
+    thinkingTokenBudget: Long?,
     callback: (Result<Unit>) -> Unit
   ) {
     scope.launch {
@@ -250,6 +251,7 @@ private class PlatformServiceImpl(
             systemInstruction = systemInstruction,
             toolDefinitionsJson = toolDefinitionsJson,
             enableThinking = enableThinking ?: false,
+            thinkingTokenBudget = thinkingTokenBudget?.toInt(),
           )
 
           // Wire Dart tool executor for LiteRT-LM sessions with tools

@@ -99,6 +99,7 @@ class PlatformServiceImpl : NSObject, PlatformService, FlutterStreamHandler {
         systemInstruction: String?,
         toolDefinitionsJson: [String]?,
         enableThinking: Bool?,
+        thinkingTokenBudget: Int64?,
         completion: @escaping (Result<Void, any Error>) -> Void
     ) {
         // toolDefinitionsJson ignored on iOS — MediaPipe has no native tool API
