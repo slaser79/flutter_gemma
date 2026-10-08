@@ -76,6 +76,12 @@ class LiteRtLmSession(
             null
         }
 
+    init {
+        Log.i(TAG, "Thinking config: enableThinking=${config.enableThinking}, " +
+            "thinkingTokenBudget=${config.thinkingTokenBudget}, " +
+            "passedToConversationConfig=${thinkingConfig != null}")
+    }
+
     // Chunk buffering (MediaPipe compatibility) - thread-safe access
     private val pendingPrompt = StringBuilder()
     private val promptLock = Any()
